@@ -7,8 +7,8 @@
  */
 
 import { z } from 'zod';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { Request, Response, NextFunction } from 'express';
+import { PrismaClient } from '@prisma/client';
 
 import {
   HandlerConfig,
@@ -75,10 +75,7 @@ import { ConfigManager } from '../config/manager';
 export function createHandler<TInput = unknown, TOutput = unknown>(
   config: HandlerConfig<TInput, TOutput>
 ) {
-  return async (
-    req: NextRequest,
-    context?: { params: Promise<Record<string, string>> }
-  ): Promise<NextResponse> => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const traceId = generateTraceId();
     const startTime = Date.now();
 
@@ -96,8 +93,8 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         span = monitoring.startSpan('handler', { traceId });
       }
 
-      const params = context?.params ? await context.params : {};
-      const searchParams = req.nextUrl.searchParams;
+      const params = req.params || {};
+      const query = req.query || {};
 
       // ============================================
       // 1. Configuration & Feature Flags
@@ -111,6 +108,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
 
         if (disabledFeatures.length > 0) {
           return errorResponse(
+            res,
             'SERVICE_UNAVAILABLE',
             `Feature ${disabledFeatures[0]} is disabled`,
             503
@@ -126,6 +124,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         const clientVersion = versionManager.getClientVersion(req);
         if (!versionManager.isVersionSupported(clientVersion, config.apiVersion)) {
           return errorResponse(
+            res,
             'BAD_REQUEST',
             `API version ${clientVersion} is not supported. Required: ${config.apiVersion}`,
             400
@@ -142,7 +141,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
       if (configManager.getConfig().multitenancy.enabled) {
         tenant = await tenantManager.getTenantFromRequest(req);
         if (!tenant) {
-          return errorResponse('BAD_REQUEST', 'Invalid tenant', 400);
+          return errorResponse(res, 'BAD_REQUEST', 'Invalid tenant', 400);
         }
       }
 
@@ -161,9 +160,9 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         if (!user) {
           monitoring.recordMetric('auth.failure', 1, {
             method: req.method,
-            path: req.nextUrl.pathname,
+            path: req.path,
           });
-          return unauthorizedResponse('Authentication required');
+          return unauthorizedResponse(res, 'Authentication required');
         }
 
         monitoring.recordMetric('auth.success', 1, {
@@ -179,7 +178,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
               required_roles: config.allowedRoles.join(','),
               user_role: userRole,
             });
-            return forbiddenResponse('Insufficient permissions for this operation');
+            return forbiddenResponse(res, 'Insufficient permissions for this operation');
           }
         }
 
@@ -193,7 +192,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
             monitoring.recordMetric('auth.forbidden', 1, {
               required_permissions: config.requiredPermissions.join(','),
             });
-            return forbiddenResponse('Missing required permissions');
+            return forbiddenResponse(res, 'Missing required permissions');
           }
         }
       }
@@ -206,7 +205,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         const rateLimiter = RedisRateLimiter.getInstance();
         const key = config.rateLimit.keyGenerator
           ? config.rateLimit.keyGenerator(req, user || undefined)
-          : `rate-limit:${user?.id || req.ip}:${req.nextUrl.pathname}`;
+          : `rate-limit:${user?.id || req.ip}:${req.path}`;
 
         const isAllowed = await rateLimiter.checkLimit(key, config.rateLimit);
 
@@ -214,9 +213,9 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
           monitoring.recordMetric('rate_limit.exceeded', 1, {
             key,
             method: req.method,
-            path: req.nextUrl.pathname,
+            path: req.path,
           });
-          return rateLimitResponse('Rate limit exceeded');
+          return rateLimitResponse(res, 'Rate limit exceeded');
         }
       }
 
@@ -249,13 +248,13 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
             monitoring.recordMetric('validation.error', 1, {
               field_count: Object.keys(details).length,
             });
-            return validationErrorResponse('Invalid input data', details);
+            return validationErrorResponse(res, 'Invalid input data', details);
           }
 
           input = parseResult.data;
         } catch (error) {
           if (error instanceof SyntaxError) {
-            return validationErrorResponse('Invalid JSON in request body');
+            return validationErrorResponse(res, 'Invalid JSON in request body');
           }
           throw error;
         }
@@ -271,7 +270,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         const cacheManager = CacheManager.getInstance();
         const cacheKey = config.cache.keyGenerator
           ? config.cache.keyGenerator(req, user || undefined)
-          : `cache:${req.nextUrl.pathname}:${JSON.stringify(input)}`;
+          : `cache:${req.path}:${JSON.stringify(input)}`;
 
         const cached = await cacheManager.get(cacheKey);
         if (cached) {
@@ -280,7 +279,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
           });
 
           const executionTime = Date.now() - startTime;
-          return successResponse(cached, undefined, 200, {
+          return successResponse(res, cached, undefined, 200, {
             executionTime,
             cached: true,
           });
@@ -295,17 +294,14 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
       // 8. Database Connection
       // ============================================
 
-      let supabase: any;
+      let prisma: PrismaClient;
 
       if (tenant) {
         // Get tenant-specific connection
-        supabase = await tenantManager.getDatabaseConnection(tenant.id);
+        prisma = await tenantManager.getDatabaseConnection(tenant.id);
       } else {
-        // Get default connection
-        supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
+        // Get default connection (Prisma singleton)
+        prisma = new PrismaClient();
       }
 
       // ============================================
@@ -319,7 +315,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         const resourceId = params[resourceIdParam];
 
         if (!resourceId) {
-          return validationErrorResponse(`Missing required parameter: ${resourceIdParam}`);
+          return validationErrorResponse(res, `Missing required parameter: ${resourceIdParam}`);
         }
 
         // Build ownership query
@@ -345,7 +341,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
             table,
             resource_id: resourceId,
           });
-          return forbiddenResponse('Resource not found or access denied');
+          return forbiddenResponse(res, 'Resource not found or access denied');
         }
 
         resource = data;
@@ -358,9 +354,9 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
       const handlerContext: HandlerContext<TInput> = {
         input,
         user,
-        supabase,
+        prisma,
         params,
-        searchParams,
+        query,
         request: req,
         resource,
         tenant,
@@ -370,7 +366,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
           startTime: new Date(startTime),
           tags: {
             method: req.method,
-            path: req.nextUrl.pathname,
+            path: req.path,
             user_id: user?.id,
             tenant_id: tenant?.id,
           },
@@ -405,7 +401,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         const cacheManager = CacheManager.getInstance();
         const cacheKey = config.cache.keyGenerator
           ? config.cache.keyGenerator(req, user || undefined)
-          : `cache:${req.nextUrl.pathname}:${JSON.stringify(input)}`;
+          : `cache:${req.path}:${JSON.stringify(input)}`;
 
         await cacheManager.set(cacheKey, processedResult, config.cache.ttl);
       }
@@ -421,7 +417,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         execution_time: executionTime,
       });
 
-      return successResponse(processedResult, undefined, config.successStatus, {
+      return successResponse(res, processedResult, undefined, config.successStatus, {
         executionTime,
       });
 
@@ -452,6 +448,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
       // Zod validation errors
       if (error instanceof z.ZodError) {
         return validationErrorResponse(
+          res,
           'Validation failed',
           error.flatten().fieldErrors
         );
@@ -459,6 +456,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
 
       // Return generic error (don't expose internal details)
       return internalErrorResponse(
+        res,
         process.env.NODE_ENV === 'development'
           ? `Internal error: ${error.message}`
           : 'An unexpected error occurred'

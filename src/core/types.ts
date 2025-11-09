@@ -2,7 +2,7 @@
  * Comprehensive TypeScript types and interfaces for the Secure API Handler Framework
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { Request, Response } from 'express';
 import { z } from 'zod';
 
 // ============================================
@@ -31,7 +31,7 @@ export interface AuthToken {
 
 export interface AuthStrategy {
   name: string;
-  authenticate(request: NextRequest): Promise<User | null>;
+  authenticate(request: Request): Promise<User | null>;
   refresh?(token: string): Promise<User | null>;
   validate?(token: string): Promise<boolean>;
 }
@@ -85,13 +85,12 @@ export interface HandlerConfig<TInput = unknown, TOutput = unknown> {
 }
 
 export interface OwnershipConfig {
-  table: string;
-  resourceIdParam: string;
-  resourceIdColumn?: string;
-  brandIdColumn?: string;
-  tenantIdColumn?: string;
-  selectColumns?: string;
-  ownershipField?: string;
+  model: string;              // Prisma model name (e.g., 'User', 'Project')
+  resourceIdParam: string;    // URL parameter name containing resource ID
+  resourceIdField?: string;   // Field name for resource ID (default: 'id')
+  ownerIdField?: string;      // Field name for owner ID (e.g., 'userId', 'createdBy')
+  tenantIdField?: string;     // Field name for tenant ID (e.g., 'tenantId')
+  selectFields?: string[];    // Fields to select (Prisma syntax)
 }
 
 export interface RateLimitConfig {
@@ -99,14 +98,14 @@ export interface RateLimitConfig {
   maxRequests: number;
   skipSuccessfulRequests?: boolean;
   skipFailedRequests?: boolean;
-  keyGenerator?: (req: NextRequest, user?: User) => string;
-  handler?: (req: NextRequest, res: NextResponse) => Promise<NextResponse>;
+  keyGenerator?: (req: Request, user?: User) => string;
+  handler?: (req: Request, res: Response) => Promise<Response>;
 }
 
 export interface CacheConfig {
   ttl: number;
-  keyGenerator?: (req: NextRequest, user?: User) => string;
-  condition?: (req: NextRequest, user?: User) => boolean;
+  keyGenerator?: (req: Request, user?: User) => string;
+  condition?: (req: Request, user?: User) => boolean;
   invalidateOn?: string[];
 }
 
@@ -128,17 +127,17 @@ export interface HandlerContext<TInput = unknown> {
   /** Authenticated user */
   user: User | null;
 
-  /** Supabase client instance */
-  supabase: any; // SupabaseClient type
+  /** Prisma client instance */
+  prisma: any; // PrismaClient type
 
   /** URL parameters */
   params: Record<string, string>;
 
   /** Query string parameters */
-  searchParams: URLSearchParams;
+  query: Record<string, any>;
 
-  /** Original Next.js request object */
-  request: NextRequest;
+  /** Original Express request object */
+  request: Request;
 
   /** Verified resource data */
   resource?: any;

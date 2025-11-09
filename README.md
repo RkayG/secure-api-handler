@@ -1,2 +1,2 @@
 # secure-api-request-handler
-A secure wrapper for api requests in multi-tenant systems. Handles authentication, request sanitisation, resource ownership, data sanitization, data encryption, rate limiting, 
+A comprehensive, enterprise-grade API handler framework for building secure, multi-tenant systems with authentication, sanitization, encryption, rate limiting, caching, and observability.

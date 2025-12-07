@@ -386,6 +386,91 @@ snyk wizard
 
 **Recommendation**: Use **npm audit** for quick checks and **Dependabot** for automated updates. Snyk is optional for teams needing advanced features like license compliance and container scanning.
 
+### Static Analysis
+
+Detect unsafe code patterns and security vulnerabilities in your codebase:
+
+#### ESLint Security Plugins
+
+The project includes security-focused ESLint plugins to catch common vulnerabilities:
+
+```bash
+# Run standard linting
+npm run lint
+
+# Run security-focused linting
+npm run lint:security
+
+# Generate JSON report
+npm run lint:report
+
+# Auto-fix issues
+npm run lint:fix
+```
+
+**Security Rules Detected:**
+- Object injection vulnerabilities
+- Non-literal file system operations
+- Unsafe regex patterns
+- Eval usage
+- CSRF vulnerabilities
+- Timing attacks
+- Unsafe buffer operations
+- Child process vulnerabilities
+- Insecure randomness
+- Dangerous redirects
+
+**Configuration**: See `.eslintrc.json` for full security rules configuration.
+
+#### SonarQube
+
+For enterprise-grade code quality and security analysis:
+
+**Setup:**
+
+1. Install SonarQube Scanner:
+   ```bash
+   # macOS/Linux
+   brew install sonar-scanner
+   
+   # Or download from: https://docs.sonarqube.org/latest/analysis/scan/sonarscanner/
+   ```
+
+2. Configure SonarQube server connection in `sonar-project.properties`
+
+3. Run analysis:
+   ```bash
+   npm run analyze:sonar
+   ```
+
+**Features:**
+- Code quality metrics
+- Security vulnerability detection
+- Code smell detection
+- Code duplication analysis
+- Test coverage integration
+- Technical debt tracking
+
+**Configuration Files:**
+- `sonar-project.properties` - Project configuration
+- `.sonarlint.json` - IDE integration settings
+
+**SonarQube Cloud**: For hosted solutions, use [SonarCloud](https://sonarcloud.io/) (free for open source projects).
+
+#### Combined Analysis
+
+Run all static analysis tools together:
+
+```bash
+# Run linting, type checking, and dependency audit
+npm run analyze
+```
+
+**Recommendation**: 
+- Use **ESLint security plugins** for real-time feedback during development
+- Use **SonarQube** for comprehensive code quality analysis in CI/CD pipelines
+- Integrate both into your development workflow for maximum security coverage
+
 ## 📊 Monitoring & Observability
 
 ### Health Checks

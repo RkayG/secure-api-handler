@@ -1,0 +1,76 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "security",
+    "security-node"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:security/recommended",
+    "plugin:security-node/recommended"
+  ],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+    "security/detect-object-injection": "error",
+    "security/detect-non-literal-fs-filename": "warn",
+    "security/detect-non-literal-regexp": "warn",
+    "security/detect-non-literal-require": "error",
+    "security/detect-eval-with-expression": "error",
+    "security/detect-no-csrf-before-method-override": "error",
+    "security/detect-possible-timing-attacks": "warn",
+    "security/detect-unsafe-regex": "error",
+    "security/detect-buffer-noassert": "error",
+    "security/detect-child-process": "warn",
+    "security/detect-disable-mustache-escape": "error",
+    "security/detect-new-buffer": "error",
+    "security-node/detect-crlf": "error",
+    "security-node/detect-dangerous-redirects": "error",
+    "security-node/detect-insecure-randomness": "error",
+    "security-node/detect-non-literal-require-calls": "error",
+    "security-node/detect-possible-timing-attacks": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-debugger": "error",
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "no-unsafe-finally": "error",
+    "no-unsafe-negation": "error",
+    "prefer-promise-reject-errors": "error",
+    "require-atomic-updates": "error"
+  },
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "*.js",
+    "*.d.ts",
+    "coverage/",
+    ".eslintrc.json"
+  ]
+}
+

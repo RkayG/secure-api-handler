@@ -6,8 +6,8 @@
 
 import express from 'express';
 import { z } from 'zod';
-import { createHandler, createAuthenticatedHandler } from '../../src/core/handler';
-import { AuditService, AuditReporter } from '../../src/audit';
+import { createHandler, createAuthenticatedHandler } from '@tenet/api';
+import { AuditService, AuditReporter } from '@tenet/api';
 
 const app = express();
 app.use(express.json());

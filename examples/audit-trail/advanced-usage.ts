@@ -5,10 +5,10 @@
  */
 
 import express from 'express';
-import { createAuditMiddleware, skipHealthChecks } from '../../src/audit/audit-middleware';
-import { AuditService } from '../../src/audit/audit-service';
-import { AuditRetentionManager } from '../../src/audit/audit-retention';
-import { AuditReporter } from '../../src/audit/audit-reporter';
+import { createAuditMiddleware, skipHealthChecks } from '@tenet/api';
+import { AuditService } from '@tenet/api';
+import { AuditRetentionManager } from '@tenet/api';
+import { AuditReporter } from '@tenet/api';
 
 const app = express();
 app.use(express.json());

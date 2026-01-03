@@ -1,6 +1,6 @@
-# Secure API Handler Template
+# Tenet
 
-A comprehensive, enterprise-grade API handler framework for **Node.js + Express + Prisma** to build secure, multi-tenant systems with authentication, sanitization, encryption, rate limiting, caching, and observability.
+**Build on Solid Fundamentals** - Enterprise-grade API framework with built-in security, audit trails, and compliance for Node.js + Express + Prisma
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
@@ -45,9 +45,9 @@ A comprehensive, enterprise-grade API handler framework for **Node.js + Express 
 ## 📦 Installation
 
 ```bash
-# Clone the template
-git clone https://github.com/RkayG/secure-api-request-handler
-cd secure-api-request-handler
+# Clone the repository
+git clone https://github.com/RkayG/tenet
+cd tenet
 
 # Install dependencies
 npm install
@@ -74,7 +74,7 @@ npm run dev
 
 ```typescript
 import express from 'express';
-import { createHandler } from 'secure-api-handler';
+import { createHandler } from '@tenet/api';
 
 const app = express();
 
@@ -104,7 +104,7 @@ app.listen(3000, () => console.log('Server running on port 3000'));
 
 ```typescript
 import { Router } from 'express';
-import { createAuthenticatedHandler } from 'secure-api-handler';
+import { createAuthenticatedHandler } from '@tenet/api';
 
 const router = Router();
 
@@ -137,7 +137,7 @@ export default router;
 
 ```typescript
 import { Router } from 'express';
-import { createHandler } from 'secure-api-handler';
+import { createHandler } from '@tenet/api';
 
 const router = Router();
 

@@ -1,7 +1,7 @@
 {
-  "name": "secure-api-handler-template",
+  "name": "@tenet/api",
   "version": "1.0.0",
-  "description": "A comprehensive, secure API handler framework for multi-tenant systems with authentication, sanitization, encryption, rate limiting, caching, and observability",
+  "description": "Enterprise-grade API framework with built-in security, audit trails, multi-tenancy, and compliance features for Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -18,8 +18,8 @@
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build",
-    "docker:build": "docker build -t secure-api-handler .",
-    "docker:run": "docker run -p 3000:3000 secure-api-handler",
+    "docker:build": "docker build -t tenet-api .",
+    "docker:run": "docker run -p 3000:3000 tenet-api",
     "docs": "typedoc src/index.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -35,26 +35,31 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/secure-api-handler-template.git"
+    "url": "git+https://github.com/RkayG/tenet.git"
   },
   "keywords": [
-    "api",
+    "tenet",
+    "api-framework",
     "security",
     "multi-tenant",
     "authentication",
-    "sanitization",
+    "audit-trail",
+    "compliance",
+    "gdpr",
+    "soc2",
+    "hipaa",
     "encryption",
     "rate-limiting",
-    "caching",
+    "prisma",
     "typescript",
-    "framework"
+    "enterprise"
   ],
-  "author": "Your Name",
+  "author": "RkayG",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/yourusername/secure-api-handler-template/issues"
+    "url": "https://github.com/RkayG/tenet/issues"
   },
-  "homepage": "https://github.com/yourusername/secure-api-handler-template#readme",
+  "homepage": "https://tenetapi.com",
   "dependencies": {
     "@prisma/client": "^5.6.0",
     "@types/bcryptjs": "^2.4.6",

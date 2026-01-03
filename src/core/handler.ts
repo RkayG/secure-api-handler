@@ -37,6 +37,8 @@ import { MonitoringService } from '../monitoring/service';
 import { TenantManager } from '../multitenancy/manager';
 import { VersionManager } from '../versioning/manager';
 import { ConfigManager } from '../config/manager';
+import { AuditService } from '../audit/audit-service';
+import { AuditEventType, AuditCategory, AuditStatus, AuditSeverity } from '../audit/audit-types';
 
 // ============================================
 // Main Handler Factory
@@ -84,8 +86,10 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
     const configManager = ConfigManager.getInstance();
     const tenantManager = TenantManager.getInstance();
     const versionManager = VersionManager.getInstance();
+    const auditService = AuditService.getInstance();
 
     let span: any = null;
+    let auditEnabled = config.auditConfig?.enabled !== false;
 
     try {
       // Start monitoring span
@@ -143,7 +147,7 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         if (tenantId) {
           tenant = await tenantManager.getTenantContext(tenantId) || undefined;
         }
-        
+
         // Only fail if tenant is required
         if (!tenant && configManager.getConfig().multitenancy.enabled) {
           return errorResponse(res, 'BAD_REQUEST', 'Invalid tenant', 400);
@@ -167,6 +171,14 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
             method: req.method,
             path: req.path,
           });
+
+          // Audit: Log authentication failure
+          if (auditEnabled) {
+            await auditService.logAuthEvent('login_failed', undefined, false, 'Authentication required', {
+              request: req,
+            });
+          }
+
           return unauthorizedResponse(res, 'Authentication required');
         }
 
@@ -174,6 +186,14 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
           method: req.method,
           user_role: user.role,
         });
+
+        // Audit: Log successful authentication
+        if (auditEnabled && config.auditConfig?.trackDataChanges !== false) {
+          await auditService.logAuthEvent('login', user.id, true, undefined, {
+            user,
+            request: req,
+          });
+        }
 
         // Role-based access control
         if (config.allowedRoles && config.allowedRoles.length > 0) {
@@ -352,6 +372,18 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
               model,
               resource_id: resourceId,
             });
+
+            // Audit: Log authorization failure
+            if (auditEnabled) {
+              await auditService.logSecurityEvent(
+                'authorization.failed',
+                AuditSeverity.WARNING,
+                `Access denied to ${model} ${resourceId}`,
+                { model, resourceId },
+                { user, tenant, request: req }
+              );
+            }
+
             return forbiddenResponse(res, 'Resource not found or access denied');
           }
         } catch (error) {
@@ -385,6 +417,12 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
           },
         },
       };
+
+      // Capture old data for UPDATE/DELETE operations (for audit trail)
+      let oldData: any;
+      if (auditEnabled && config.auditConfig?.trackDataChanges && resource) {
+        oldData = { ...resource };
+      }
 
       const result = await config.handler(handlerContext);
 
@@ -439,6 +477,39 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         execution_time: executionTime,
       });
 
+      // Audit: Log successful operation
+      if (auditEnabled) {
+        const eventType = mapMethodToAuditEventType(req.method);
+        const resourceType = config.auditConfig?.resourceType || config.requireOwnership?.model;
+        const resourceId = config.requireOwnership?.resourceIdParam ? params[config.requireOwnership.resourceIdParam] : undefined;
+
+        await auditService.logEvent(
+          {
+            eventType,
+            category: config.auditConfig?.category as any || AuditCategory.DATA,
+            action: config.auditConfig?.action || `${req.method.toLowerCase()}.${req.path}`,
+            description: `${req.method} ${req.path}`,
+            resourceType,
+            resourceId,
+            oldData: config.auditConfig?.trackDataChanges ? oldData : undefined,
+            newData: config.auditConfig?.captureResponseBody ? processedResult : undefined,
+            status: AuditStatus.SUCCESS,
+            statusCode: config.successStatus || 200,
+            severity: AuditSeverity.INFO,
+            executionTimeMs: executionTime,
+            metadata: config.auditConfig?.metadata,
+            tags: config.auditConfig?.tags,
+            retentionCategory: config.auditConfig?.retentionCategory,
+          },
+          {
+            user,
+            tenant,
+            request: req,
+            traceId,
+          }
+        );
+      }
+
       return successResponse(res, processedResult, undefined, config.successStatus, {
         executionTime,
       });
@@ -461,6 +532,33 @@ export function createHandler<TInput = unknown, TOutput = unknown>(
         traceId,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       });
+
+      // Audit: Log error
+      if (auditEnabled) {
+        const eventType = mapMethodToAuditEventType(req.method);
+        await auditService.logEvent(
+          {
+            eventType,
+            category: AuditCategory.SYSTEM,
+            action: `${req.method.toLowerCase()}.error`,
+            description: `Error in ${req.method} ${req.path}`,
+            status: AuditStatus.FAILURE,
+            errorMessage: error.message,
+            severity: AuditSeverity.ERROR,
+            executionTimeMs: executionTime,
+            metadata: {
+              errorType: error.constructor.name,
+              stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            },
+          },
+          {
+            user,
+            tenant,
+            request: req,
+            traceId,
+          }
+        );
+      }
 
       // Close monitoring span
       if (span) {
@@ -550,4 +648,20 @@ function generateTraceId(): string {
 
 function generateSpanId(): string {
   return `span_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function mapMethodToAuditEventType(method: string): AuditEventType {
+  switch (method.toUpperCase()) {
+    case 'POST':
+      return AuditEventType.CREATE;
+    case 'GET':
+      return AuditEventType.READ;
+    case 'PUT':
+    case 'PATCH':
+      return AuditEventType.UPDATE;
+    case 'DELETE':
+      return AuditEventType.DELETE;
+    default:
+      return AuditEventType.CUSTOM;
+  }
 }

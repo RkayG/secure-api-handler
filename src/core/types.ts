@@ -80,8 +80,46 @@ export interface HandlerConfig<TInput = unknown, TOutput = unknown> {
   /** Feature flags */
   featureFlags?: string[];
 
+  /** Audit trail configuration */
+  auditConfig?: AuditConfig;
+
   /** The actual request handler */
   handler: (ctx: HandlerContext<TInput>) => Promise<TOutput>;
+}
+
+export interface AuditConfig {
+  /** Enable audit logging for this handler */
+  enabled?: boolean;
+
+  /** Event type override (auto-detected from HTTP method if not provided) */
+  eventType?: string;
+
+  /** Category override */
+  category?: string;
+
+  /** Custom action name */
+  action?: string;
+
+  /** Capture request body in audit log */
+  captureRequestBody?: boolean;
+
+  /** Capture response body in audit log */
+  captureResponseBody?: boolean;
+
+  /** Track data changes (for UPDATE/DELETE operations) */
+  trackDataChanges?: boolean;
+
+  /** Resource type for data change tracking */
+  resourceType?: string;
+
+  /** Custom metadata to include in audit log */
+  metadata?: Record<string, any>;
+
+  /** Tags for categorizing audit logs */
+  tags?: string[];
+
+  /** Retention category */
+  retentionCategory?: string;
 }
 
 export interface OwnershipConfig {

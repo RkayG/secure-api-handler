@@ -99,6 +99,34 @@ export {
   healthCheckResponse,
 } from './core/response';
 
+// Audit Trail
+export {
+  AuditService,
+  AuditReporter,
+  AuditRetentionManager,
+  createAuditMiddleware,
+  skipHealthChecks,
+  defaultAuditConfig,
+  AuditEventType,
+  AuditCategory,
+  AuditStatus,
+  AuditSeverity,
+} from './audit';
+
+export type {
+  AuditEventData,
+  AuditLog,
+  AuditQueryFilter,
+  AuditQueryOptions,
+  AuditQueryResult,
+  AuditServiceConfig,
+  AuditContext,
+  AuditReportConfig,
+  AuditReport,
+  RetentionPolicy,
+  RetentionCleanupResult,
+} from './audit';
+
 // Re-export commonly used external dependencies for convenience
 export { z } from 'zod';
 export { PrismaClient } from '@prisma/client';

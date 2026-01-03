@@ -9,9 +9,9 @@ import { z } from 'zod';
 import {
   createTenantHandler,
   createAuthenticatedHandler,
-  TenantManager,
-  MonitoringService,
-} from '../../../../src';
+} from '../../../../../../../src/core/handler';
+import { TenantManager } from '../../../../../../../src/multitenancy/manager';
+import { MonitoringService } from '../../../../../../../src/monitoring/service';
 
 // Validation schemas
 const CreateProjectSchema = z.object({
@@ -50,7 +50,7 @@ export const GET = createTenantHandler({
   cache: {
     ttl: 300, // 5 minutes
     keyGenerator: (req, user) => {
-      const params = req.nextUrl.searchParams;
+      const params = req.nextUrl.searchParams as URLSearchParams;
       return `tenant:${req.params?.tenantId}:projects:${params.toString()}`;
     },
   },
@@ -115,7 +115,7 @@ export const GET = createTenantHandler({
         limit,
         offset,
         total: count,
-        hasMore: offset + limit < (count || 0),
+        hasMore: ((offset ?? 0) + (limit ?? 0)) < (count ?? 0),
       },
     };
   },

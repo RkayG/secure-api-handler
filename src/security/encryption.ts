@@ -225,7 +225,6 @@ export class EncryptionService {
    * Create a hash-based message authentication code (HMAC)
    */
   public createHMAC(data: string, key?: string): string {
-    const crypto = await import('crypto');
     const hmacKey = key ? this.deriveKey(key) : this.key;
     const hmac = crypto.createHmac('sha256', hmacKey);
     hmac.update(data);

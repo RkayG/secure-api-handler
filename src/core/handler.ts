@@ -191,7 +191,8 @@ function validateModelName(model: string): model is AllowedModel {
 }
 
 /**
- * Generate a secure cache key with proper isolation
+ * Generate a secure cache key with proper isolation and hashing
+ * Uses SHA-256 to hash input data to prevent cache key length issues
  */
 function generateCacheKey(
   path: string,
@@ -199,12 +200,19 @@ function generateCacheKey(
   userId?: string,
   tenantId?: string
 ): string {
+  // Hash the input to prevent cache key length issues and improve security
+  const inputHash = crypto
+    .createHash('sha256')
+    .update(stableStringify(input))
+    .digest('hex')
+    .substring(0, 16); // First 16 chars for brevity
+
   const parts = [
     'cache',
     path,
     tenantId || 'global',
     userId || 'anon',
-    stableStringify(input),
+    inputHash,
   ];
 
   return parts.join(':');
@@ -356,7 +364,7 @@ function createTenantScopingMiddleware(tenantId: string) {
 }
 
 // ============================================
-// Main Handler Factory (Enhanced)
+// Main Handler Factory 
 // ============================================
 
 /**
@@ -385,6 +393,14 @@ function _createHandler<TInput = unknown, TOutput = unknown>(
   config: HandlerConfig<TInput, TOutput>,
   injectedPrisma?: PrismaClient
 ) {
+  // Apply security preset if specified
+  let effectiveConfig = config;
+
+  if (config.preset) {
+    const { mergePresetConfig } = require('./security-presets');
+    effectiveConfig = mergePresetConfig(config.preset, config);
+  }
+
   return async (req: Request, res: Response): Promise<any> => {
     const traceId = generateSecureTraceId();
     const startTime = Date.now();
@@ -693,6 +709,12 @@ function _createHandler<TInput = unknown, TOutput = unknown>(
         idempotencyKey = req.get('Idempotency-Key');
 
         if (idempotencyKey) {
+          // Validate idempotency key format (prevent injection attacks)
+          if (!/^[a-zA-Z0-9_-]{1,255}$/.test(idempotencyKey)) {
+            monitoring.recordMetric('idempotency.invalid_key', 1);
+            return errorResponse(res, 'BAD_REQUEST', 'Invalid Idempotency-Key format. Must be alphanumeric, dash, or underscore (1-255 chars)', 400);
+          }
+
           const cachedResponse = await idempotencyService.get(idempotencyKey);
 
           if (cachedResponse) {
@@ -806,14 +828,17 @@ function _createHandler<TInput = unknown, TOutput = unknown>(
       // ============================================
 
       if (tenant && config.autoTenantScope) {
-        // Note: In production, this middleware should be applied once during
-        // client initialization, not on every request. This is a safeguard.
-        const middleware = createTenantScopingMiddleware(tenant.id);
-        prisma.$use(middleware);
+        // Check if middleware already applied to prevent stacking
+        // Note: In production, use Prisma Client Extensions instead of middleware
+        if (!(prisma as any)._tenantMiddlewareApplied) {
+          const middleware = createTenantScopingMiddleware(tenant.id);
+          prisma.$use(middleware);
+          (prisma as any)._tenantMiddlewareApplied = true;
 
-        monitoring.recordMetric('tenant.scoping.applied', 1, {
-          tenant_id: tenant.id,
-        });
+          monitoring.recordMetric('tenant.scoping.applied', 1, {
+            tenant_id: tenant.id,
+          });
+        }
       }
 
       // ============================================
@@ -1159,7 +1184,7 @@ function _createHandler<TInput = unknown, TOutput = unknown>(
 }
 
 // ============================================
-// Convenience Wrappers (Enhanced)
+// Convenience Wrappers 
 // ============================================
 
 /**
@@ -1180,10 +1205,13 @@ function _createHandler<TInput = unknown, TOutput = unknown>(
  * Example: User profile endpoints, user settings, personal dashboards
  */
 export const createAuthenticatedHandler = <TInput, TOutput>(
-  config: Omit<HandlerConfig<TInput, TOutput>, 'requireAuth'>,
+  config: Omit<HandlerConfig<TInput, TOutput>, 'requireAuth' | 'preset'>,
   injectedPrisma?: PrismaClient
 ): ReturnType<typeof _createHandler<TInput, TOutput>> => {
-  return _createHandler({ ...config, requireAuth: true }, injectedPrisma);
+  return _createHandler({
+    preset: 'authenticated',
+    ...config,
+  }, injectedPrisma);
 };
 
 /**
@@ -1206,13 +1234,12 @@ export const createAuthenticatedHandler = <TInput, TOutput>(
  * IMPORTANT: Be extra careful with input validation on public endpoints!
  */
 export const createPublicHandler = <TInput, TOutput>(
-  config: Omit<HandlerConfig<TInput, TOutput>, 'requireAuth'>,
+  config: Omit<HandlerConfig<TInput, TOutput>, 'requireAuth' | 'preset'>,
   injectedPrisma?: PrismaClient
 ): ReturnType<typeof _createHandler<TInput, TOutput>> => {
   return _createHandler({
+    preset: 'public',
     ...config,
-    requireAuth: false,
-    csrfProtection: false, // No CSRF for public endpoints
   }, injectedPrisma);
 };
 
@@ -1239,15 +1266,8 @@ export const createSuperAdminHandler = <TInput, TOutput>(
   injectedPrisma?: PrismaClient
 ): ReturnType<typeof _createHandler<TInput, TOutput>> => {
   return _createHandler({
+    preset: 'admin',
     ...config,
-    requireAuth: true,
-    allowedRoles: ['superadmin'],
-    auditConfig: {
-      ...config.auditConfig,
-      enabled: true,
-      trackDataChanges: true,
-      severity: AuditSeverity.HIGH,
-    },
   }, injectedPrisma);
 };
 
@@ -1304,19 +1324,11 @@ export const createTenantHandler = <TInput, TOutput>(
   injectedPrisma?: PrismaClient
 ): ReturnType<typeof _createHandler<TInput, TOutput>> => {
   return _createHandler({
+    preset: 'tenant',
     ...config,
-    requireAuth: true,
-    featureFlags: ['multitenancy'],
-    // Enable tenant-scoped role validation by default
+    // Allow overriding tenant-specific settings
     tenantRoleValidation: config.tenantRoleValidation !== false,
-    // Enable automatic tenant scoping by default
     autoTenantScope: config.autoTenantScope !== false,
-    // Enhanced audit logging for tenant operations
-    auditConfig: {
-      ...config.auditConfig,
-      enabled: config.auditConfig?.enabled !== false,
-      trackDataChanges: config.auditConfig?.trackDataChanges !== false,
-    },
   }, injectedPrisma);
 };
 

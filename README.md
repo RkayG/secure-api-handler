@@ -1,23 +1,53 @@
 # Tenet Framework
-
-**Build on Solid Fundamentals.** An enterprise-grade, opinionated API framework for Node.js that puts security, compliance, and developer experience first.
-
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-4.18-lightgrey.svg)](https://expressjs.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-5.6-green.svg)](https://prisma.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 🧠 Philosophy
+**The Enterprise-Grade API Framework for Node.js**
 
-### Security by Default
-Most frameworks make you "opt-in" to security. Tenet is **opt-out**. By default, endpoints have strict input sanitization, rate limiting, and security headers.
+Tenet is an **opinionated, secure-by-default framework** designed to solve the common challenges of building compliant, scalable SaaS applications. It replaces ad-hoc middleware glue with a structured, type-safe pipeline, allowing you to focus on business logic rather than security plumbing.
 
-### Configuration over Boilerplate
-Stop writing the same 20 lines of middleware. Use our declarative `HandlerConfig` to define authentication, validation, and auditing rules in one place.
+## 🧠 Core Philosophy
 
-### Type Safety
-Types flow automatically from your Zod schemas to your route handlers and database queries.
+### 1. Security by Default
+In Tenet, security is **opt-out**. By default, every handler you create has:
+- Strict input sanitization (XSS/SQLi protection)
+- Authentication checks
+- CSRF protection
+- Rate limiting
+- Secure HTTP headers
+
+### 2. Configuration over Boilerplate
+Developers spend too much time writing the same 20 lines of middleware setup for every endpoint. Tenet uses a **declarative configuration object** (`HandlerConfig`) to define behavior. You describe *what* you want (e.g., "Authenticated, Rate Limited, Audited"), and the framework constructs the pipeline.
+
+### 3. Type Safety as a First-Class Citizen
+The framework leverages TypeScript to its fullest:
+- **Input Types**: Derived automatically from Zod schemas.
+- **Database Types**: Generated from your Prisma schema.
+- **Context Types**: Guaranteed user/tenant presence based on your configuration.
+
+---
+
+## 🏗️ Technical Stack Choices
+
+We chose a "Boring but Proven" technology stack to ensure long-term maintainability and stability.
+
+- **Express.js (The Core)**: The industry standard. We wrap Express to provide modern async features and typed inputs while maintaining access to its massive middleware ecosystem.
+- **Prisma (The Data Layer)**: Unmatched developer experience. We utilize Client Extensions to inject Row-Level Security (RLS) directly into the query builder.
+- **Zod (Validation)**: The bridge between untyped HTTP JSON and strict TypeScript.
+- **Redis (Infrastructure)**: Used for distributed rate limiting and caching.
+
+---
+
+## 🏢 Why use Tenet?
+
+### For Startups
+**Speed to MVP.** You get a production-ready foundation with Auth, Multi-Tenancy, and Logging out of the box. You focus 100% on your product's unique value.
+
+### For Enterprises
+**Compliance & Standardization.** Tenet enforces patterns that satisfy security audits (SOC2/GDPR). The uniform structure means any developer can jump into any backend system built with Tenet and understand it immediately.
 
 ---
 
@@ -106,13 +136,17 @@ export const listProjects = createTenantHandler({
 
 ```mermaid
 graph TD
-    A[Incoming Request] --> B[Security Headers]
-    B --> C[Rate Limiting]
-    C --> D[Input Sanitization]
-    D --> E[Authentication]
+    A[Incoming Request] --> B["Security Headers (Helmet)"]
+    B --> C["Rate Limiting (Redis)"]
+    C --> D["Input Sanitization (XSS/SQLi)"]
+    D --> E["Authentication (JWT/API Key)"]
     E --> F[Tenant Resolution]
-    F --> G[Input Validation Zod]
-    G --> H[Handler Logic]
+    F --> G[Tenant Authorization]
+    G --> H["Input Validation (Zod)"]
+    H --> I["Audit Log (Start)"]
+    I --> J{Business Logic}
+    J --> K[Response]
+    K --> L["Audit Log (Complete)"]
 ```
 
 ## 🤝 Contributing

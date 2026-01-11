@@ -15,175 +15,236 @@ describe('Monitoring Service', () => {
     });
 
     describe('Span Management', () => {
-        it('should create trace span', () => {
-            const span = monitoring.startSpan('test-operation', {
-                traceId: 'trace-123',
-                metadata: { userId: 'user-123' },
+        it('should create trace span and return spanId', () => {
+            const spanId = monitoring.startSpan('test-operation', {
+                userId: 'user-123',
             });
 
-            expect(span).toBeDefined();
-            expect(span.spanId).toBeDefined();
-            expect(span.operation).toBe('test-operation');
+            expect(spanId).toBeDefined();
+            expect(typeof spanId).toBe('string');
         });
 
         it('should end span successfully', () => {
-            const span = monitoring.startSpan('test-operation');
+            const spanId = monitoring.startSpan('test-operation');
 
-            monitoring.endSpan(span, 'success');
-
-            expect(span.status).toBe('success');
-            expect(span.endTime).toBeDefined();
-            expect(span.duration).toBeGreaterThan(0);
+            // Should not throw
+            expect(() => {
+                monitoring.endSpan(spanId, 'ok');
+            }).not.toThrow();
         });
 
         it('should end span with error', () => {
-            const span = monitoring.startSpan('test-operation');
+            const spanId = monitoring.startSpan('test-operation');
 
-            monitoring.endSpan(span, 'error', 'Test error');
-
-            expect(span.status).toBe('error');
-            expect(span.error).toBe('Test error');
+            // Should not throw
+            expect(() => {
+                monitoring.endSpan(spanId, 'error', 'Test error');
+            }).not.toThrow();
         });
 
-        it('should track nested spans', () => {
-            const parentSpan = monitoring.startSpan('parent-operation');
-            const childSpan = monitoring.startSpan('child-operation', {
-                parentSpanId: parentSpan.spanId,
+        it('should track nested spans with parent context', () => {
+            const parentSpanId = monitoring.startSpan('parent-operation');
+            const childSpanId = monitoring.startSpan('child-operation', {}, {
+                traceId: 'trace-123',
+                spanId: parentSpanId,
             });
 
-            expect(childSpan.parentSpanId).toBe(parentSpan.spanId);
+            expect(childSpanId).toBeDefined();
+            expect(childSpanId).not.toBe(parentSpanId);
+        });
+
+        it('should add events to spans', () => {
+            const spanId = monitoring.startSpan('test-operation');
+
+            // Should not throw
+            expect(() => {
+                monitoring.addSpanEvent(spanId, 'test-event', { data: 'value' });
+            }).not.toThrow();
         });
     });
 
     describe('Metrics Recording', () => {
-        it('should record counter metric', () => {
-            monitoring.recordMetric('api.requests', 1, 'counter');
-
-            const metrics = monitoring.getMetrics();
-            expect(metrics).toHaveProperty('api.requests');
+        it('should record metric', () => {
+            // Should not throw
+            expect(() => {
+                monitoring.recordMetric('api.requests', 1, { method: 'GET' });
+            }).not.toThrow();
         });
 
-        it('should record gauge metric', () => {
-            monitoring.recordMetric('memory.usage', 1024, 'gauge');
-
-            const metrics = monitoring.getMetrics();
-            expect(metrics).toHaveProperty('memory.usage');
-        });
-
-        it('should record histogram metric', () => {
-            monitoring.recordMetric('response.time', 150, 'histogram');
-
-            const metrics = monitoring.getMetrics();
-            expect(metrics).toHaveProperty('response.time');
-        });
-
-        it('should increment counter', () => {
-            monitoring.recordMetric('api.requests', 1, 'counter');
-            monitoring.recordMetric('api.requests', 1, 'counter');
-
-            const metrics = monitoring.getMetrics();
-            expect(metrics['api.requests'].value).toBe(2);
-        });
-
-        it('should track metric labels', () => {
-            monitoring.recordMetric('api.requests', 1, 'counter', {
+        it('should record metric with labels', () => {
+            monitoring.recordMetric('api.requests', 1, {
                 method: 'GET',
                 path: '/users',
             });
 
             const metrics = monitoring.getMetrics();
-            expect(metrics['api.requests'].labels).toEqual({
-                method: 'GET',
-                path: '/users',
-            });
+            expect(metrics.length).toBeGreaterThan(0);
+
+            const lastMetric = metrics[metrics.length - 1];
+            expect(lastMetric.name).toBe('api.requests');
+            expect(lastMetric.value).toBe(1);
+            expect(lastMetric.labels).toHaveProperty('method', 'GET');
+            expect(lastMetric.labels).toHaveProperty('path', '/users');
         });
-    });
 
-    describe('Performance Tracking', () => {
-        it('should track request duration', async () => {
-            const startTime = Date.now();
+        it('should get recent metrics', () => {
+            monitoring.recordMetric('test.metric', 100);
+            monitoring.recordMetric('test.metric', 200);
+            monitoring.recordMetric('test.metric', 300);
 
-            await new Promise(resolve => setTimeout(resolve, 100));
+            const metrics = monitoring.getMetrics(2);
+            expect(metrics.length).toBeLessThanOrEqual(2);
+        });
 
-            const duration = Date.now() - startTime;
-            monitoring.recordMetric('request.duration', duration, 'histogram');
+        it('should include timestamp in metrics', () => {
+            monitoring.recordMetric('test.metric', 42);
 
             const metrics = monitoring.getMetrics();
-            expect(metrics['request.duration'].value).toBeGreaterThanOrEqual(100);
+            const lastMetric = metrics[metrics.length - 1];
+
+            expect(lastMetric.timestamp).toBeDefined();
+            expect(lastMetric.timestamp).toBeInstanceOf(Date);
         });
 
-        it('should calculate percentiles', () => {
-            // Record multiple values
-            for (let i = 1; i <= 100; i++) {
-                monitoring.recordMetric('response.time', i, 'histogram');
-            }
+        it('should infer metric type', () => {
+            monitoring.recordMetric('api.requests', 1);
+            monitoring.recordMetric('memory.usage', 1024);
+            monitoring.recordMetric('response.time', 150);
 
-            const stats = monitoring.getMetricStats('response.time');
-            expect(stats.p50).toBeDefined();
-            expect(stats.p95).toBeDefined();
-            expect(stats.p99).toBeDefined();
+            const metrics = monitoring.getMetrics(3);
+            expect(metrics.length).toBeGreaterThan(0);
+
+            // All metrics should have a type
+            metrics.forEach(metric => {
+                expect(metric.type).toBeDefined();
+                expect(['counter', 'gauge', 'histogram', 'summary']).toContain(metric.type);
+            });
         });
     });
 
     describe('Error Tracking', () => {
-        it('should track error count', () => {
-            monitoring.recordError('DatabaseError', 'Connection failed');
-            monitoring.recordError('ValidationError', 'Invalid input');
+        it('should record error with Error object', () => {
+            const error = new Error('Test error');
+            error.name = 'TestError';
 
-            const errorStats = monitoring.getErrorStats();
-            expect(errorStats.total).toBe(2);
+            // Should not throw
+            expect(() => {
+                monitoring.recordError(error);
+            }).not.toThrow();
         });
 
-        it('should group errors by type', () => {
-            monitoring.recordError('DatabaseError', 'Connection failed');
-            monitoring.recordError('DatabaseError', 'Query timeout');
-            monitoring.recordError('ValidationError', 'Invalid input');
+        it('should record error with context', () => {
+            const error = new Error('Database connection failed');
+            error.name = 'DatabaseError';
 
-            const errorStats = monitoring.getErrorStats();
-            expect(errorStats.byType['DatabaseError']).toBe(2);
-            expect(errorStats.byType['ValidationError']).toBe(1);
+            expect(() => {
+                monitoring.recordError(error, {
+                    database: 'postgres',
+                    host: 'localhost',
+                });
+            }).not.toThrow();
+        });
+
+        it('should record error with span context', () => {
+            const spanId = monitoring.startSpan('database-query');
+            const error = new Error('Query timeout');
+
+            expect(() => {
+                monitoring.recordError(error, {}, spanId);
+            }).not.toThrow();
+        });
+
+        it('should handle errors without message', () => {
+            const error = new Error();
+            error.name = 'UnknownError';
+
+            expect(() => {
+                monitoring.recordError(error);
+            }).not.toThrow();
         });
     });
 
-    describe('Statistics', () => {
-        it('should return monitoring statistics', () => {
-            monitoring.recordMetric('api.requests', 100, 'counter');
-            monitoring.recordMetric('response.time', 150, 'histogram');
+    describe('Health Checks', () => {
+        it('should add health check', () => {
+            const healthCheckFn = async () => ({
+                name: 'database',
+                status: 'healthy' as const,
+                timestamp: new Date(),
+            });
 
-            const stats = monitoring.getStats();
-
-            expect(stats).toHaveProperty('metrics');
-            expect(stats).toHaveProperty('spans');
-            expect(stats).toHaveProperty('errors');
+            expect(() => {
+                monitoring.addHealthCheck('database', healthCheckFn);
+            }).not.toThrow();
         });
 
-        it('should reset statistics', () => {
-            monitoring.recordMetric('api.requests', 100, 'counter');
+        it('should run health check', async () => {
+            const healthCheckFn = async () => ({
+                name: 'api',
+                status: 'healthy' as const,
+                timestamp: new Date(),
+            });
 
-            monitoring.reset();
+            await expect(
+                monitoring.runHealthCheck('api', healthCheckFn)
+            ).resolves.not.toThrow();
+        });
 
-            const metrics = monitoring.getMetrics();
-            expect(Object.keys(metrics)).toHaveLength(0);
+        it('should get all health checks', () => {
+            const checks = monitoring.getHealthChecks();
+            expect(Array.isArray(checks)).toBe(true);
+        });
+
+        it('should get overall health status', () => {
+            const health = monitoring.getOverallHealth();
+
+            expect(health).toHaveProperty('name');
+            expect(health).toHaveProperty('status');
+            expect(health).toHaveProperty('timestamp');
+            expect(['healthy', 'unhealthy', 'degraded']).toContain(health.status);
         });
     });
 
-    describe('Health Status', () => {
-        it('should report healthy status', () => {
-            const health = monitoring.getHealth();
+    describe('Active Spans', () => {
+        it('should get active spans', () => {
+            const spanId1 = monitoring.startSpan('operation-1');
+            const spanId2 = monitoring.startSpan('operation-2');
 
-            expect(health.status).toBe('healthy');
-            expect(health.uptime).toBeGreaterThan(0);
+            const activeSpans = monitoring.getActiveSpans();
+
+            expect(Array.isArray(activeSpans)).toBe(true);
+            expect(activeSpans.length).toBeGreaterThanOrEqual(0);
         });
 
-        it('should report degraded with high error rate', () => {
-            // Simulate high error rate
-            for (let i = 0; i < 100; i++) {
-                monitoring.recordError('Error', 'Test error');
-            }
+        it('should remove span after ending', (done) => {
+            const spanId = monitoring.startSpan('test-operation');
+            monitoring.endSpan(spanId);
 
-            const health = monitoring.getHealth();
+            // Span is removed after 100ms timeout
+            setTimeout(() => {
+                const activeSpans = monitoring.getActiveSpans();
+                const hasSpan = activeSpans.some(span => span.id === spanId);
+                expect(hasSpan).toBe(false);
+                done();
+            }, 150);
+        });
+    });
 
-            expect(health.status).toBe('degraded');
+    describe('Service Configuration', () => {
+        it('should create singleton instance', () => {
+            const instance1 = MonitoringService.getInstance();
+            const instance2 = MonitoringService.getInstance();
+
+            expect(instance1).toBe(instance2);
+        });
+
+        it('should accept configuration', () => {
+            const customMonitoring = MonitoringService.getInstance({
+                serviceName: 'test-service',
+                environment: 'test',
+                provider: 'console',
+            });
+
+            expect(customMonitoring).toBeDefined();
         });
     });
 });

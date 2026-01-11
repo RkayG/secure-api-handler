@@ -51,7 +51,7 @@ describe('Response Utilities', () => {
         });
 
         it('should include custom meta data', () => {
-            const meta = { page: 1, limit: 10 };
+            const meta = { executionTime: 123, cached: true };
 
             successResponse(res, { items: [] }, undefined, 200, meta);
 
@@ -65,14 +65,14 @@ describe('Response Utilities', () => {
 
     describe('errorResponse', () => {
         it('should return error response', () => {
-            errorResponse(res, 'ERROR_CODE', 'Error message', 500);
+            errorResponse(res, 'BAD_REQUEST', 'Error message', 500);
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
                     error: {
-                        code: 'ERROR_CODE',
+                        code: 'BAD_REQUEST',
                         message: 'Error message',
                     },
                 })
@@ -96,7 +96,7 @@ describe('Response Utilities', () => {
         it('should include trace ID', () => {
             const traceId = 'trace-123';
 
-            errorResponse(res, 'ERROR', 'Error', 500, undefined, traceId);
+            errorResponse(res, 'INTERNAL_ERROR', 'Error', 500, undefined, traceId);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({

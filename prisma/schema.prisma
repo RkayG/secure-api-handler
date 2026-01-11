@@ -28,6 +28,7 @@ model User {
 
   // Relations
   tenant     Tenant?      @relation(fields: [tenantId], references: [id])
+  tenantMemberships TenantMember[]
   projects   Project[]    @relation("ProjectMembers")
   ownedProjects Project[] @relation("ProjectOwner")
   assignedTasks Task[]
@@ -48,9 +49,41 @@ model Tenant {
 
   // Relations
   users       User[]
+  members     TenantMember[]
   projects    Project[]
 
   @@map("tenants")
+}
+
+// ============================================
+// Multi-Tenancy: Tenant Membership
+// ============================================
+
+model TenantMember {
+  id        String   @id @default(cuid())
+  
+  // Membership
+  userId    String
+  tenantId  String
+  role      TenantRole @default(MEMBER)
+  
+  // Status
+  isActive  Boolean  @default(true)
+  invitedBy String?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Constraints
+  @@unique([userId, tenantId])
+  @@index([tenantId, role])
+  @@index([userId])
+  @@map("tenant_members")
 }
 
 // ============================================
@@ -129,6 +162,13 @@ enum Priority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TenantRole {
+  OWNER       // Full control over tenant
+  MANAGER     // Manage resources and members
+  MEMBER      // Standard member access
+  GUEST       // Limited read-only access
 }
 
 // ============================================

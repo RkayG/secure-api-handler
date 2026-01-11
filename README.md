@@ -7,7 +7,9 @@
 
 **The Enterprise-Grade API Framework for Node.js**
 
-Tenet is an **opinionated, secure-by-default framework** designed to solve the common challenges of building compliant, scalable SaaS applications. It replaces ad-hoc middleware glue with a structured, type-safe pipeline, allowing you to focus on business logic rather than security plumbing.
+Tenet is a **Node.js framework that makes building secure, multi-tenant APIs easy**. 
+
+It automatically handles **authentication, input validation, rate-limiting, and auditing** for every endpoint, so you can focus 100% on writing your application's logic instead of configuring middleware.
 
 ## 🧠 Core Philosophy
 

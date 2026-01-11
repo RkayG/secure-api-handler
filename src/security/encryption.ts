@@ -5,7 +5,16 @@
  * using AES-256-GCM encryption with proper key management.
  */
 
-import { createCipherGCM, createDecipherGCM, randomBytes, scryptSync } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+  scrypt,
+  createHmac,
+  timingSafeEqual
+} from 'crypto';
+import * as crypto from 'crypto';
 import { EncryptionAlgorithm } from '../core/types';
 
 export interface EncryptionOptions {
@@ -60,11 +69,11 @@ export class EncryptionService {
       const jsonData = JSON.stringify(data);
       const iv = randomBytes(this.ivLength);
 
-      const cipher = createCipherGCM(
+      const cipher = createCipheriv(
         options.algorithm || this.algorithm,
         options.key ? this.deriveKey(options.key) : this.key,
         iv
-      );
+      ) as unknown as crypto.CipherGCM;
 
       let encrypted = cipher.update(jsonData, 'utf8', 'hex');
       encrypted += cipher.final('hex');
@@ -80,7 +89,7 @@ export class EncryptionService {
       };
 
       return Buffer.from(JSON.stringify(encryptedData)).toString('base64');
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`Encryption failed: ${error.message}`);
     }
   }
@@ -97,11 +106,11 @@ export class EncryptionService {
       const iv = Buffer.from(encryptedData.iv, 'hex');
       const tag = Buffer.from(encryptedData.tag, 'hex');
 
-      const decipher = createDecipherGCM(
+      const decipher = createDecipheriv(
         options.algorithm || encryptedData.algorithm,
         options.key ? this.deriveKey(options.key) : this.key,
         iv
-      );
+      ) as unknown as crypto.DecipherGCM;
 
       decipher.setAuthTag(tag);
 
@@ -109,13 +118,13 @@ export class EncryptionService {
       decrypted += decipher.final('utf8');
 
       return JSON.parse(decrypted);
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`Decryption failed: ${error.message}`);
     }
   }
 
   /**
-   * Encrypt specific fields in an object
+   * Encrypt specific fields in an object (supports dot notation for nested fields)
    */
   public async encryptFields(
     data: Record<string, any>,
@@ -125,7 +134,13 @@ export class EncryptionService {
     const result = { ...data };
 
     for (const field of fields) {
-      if (result[field] !== undefined && result[field] !== null) {
+      if (field.includes('.')) {
+        const value = this.getNestedProperty(result, field);
+        if (value !== undefined && value !== null) {
+          const encrypted = await this.encrypt(value, options);
+          this.setNestedProperty(result, field, encrypted);
+        }
+      } else if (result[field] !== undefined && result[field] !== null) {
         result[field] = await this.encrypt(result[field], options);
       }
     }
@@ -134,7 +149,7 @@ export class EncryptionService {
   }
 
   /**
-   * Decrypt specific fields in an object
+   * Decrypt specific fields in an object (supports dot notation for nested fields)
    */
   public async decryptFields(
     data: Record<string, any>,
@@ -144,17 +159,49 @@ export class EncryptionService {
     const result = { ...data };
 
     for (const field of fields) {
-      if (result[field] !== undefined && result[field] !== null) {
+      if (field.includes('.')) {
+        const value = this.getNestedProperty(result, field);
+        if (value !== undefined && value !== null) {
+          try {
+            const decrypted = await this.decrypt(value, options);
+            this.setNestedProperty(result, field, decrypted);
+          } catch (error: any) {
+            console.warn(`Failed to decrypt field ${field}:`, error.message);
+          }
+        }
+      } else if (result[field] !== undefined && result[field] !== null) {
         try {
           result[field] = await this.decrypt(result[field], options);
-        } catch (error) {
-          // If decryption fails, keep the original value
+        } catch (error: any) {
           console.warn(`Failed to decrypt field ${field}:`, error.message);
         }
       }
     }
 
     return result;
+  }
+
+  /**
+   * Helper to get nested property value
+   */
+  private getNestedProperty(obj: any, path: string): any {
+    return path.split('.').reduce((o, key) => (o && o[key] !== undefined) ? o[key] : undefined, obj);
+  }
+
+  /**
+   * Helper to set nested property value
+   */
+  private setNestedProperty(obj: any, path: string, value: any): void {
+    const keys = path.split('.');
+    const lastKey = keys.pop();
+    const target = keys.reduce((o, key) => {
+      if (!o[key]) o[key] = {};
+      return o[key];
+    }, obj);
+
+    if (lastKey && target) {
+      target[lastKey] = value;
+    }
   }
 
   /**
@@ -201,24 +248,33 @@ export class EncryptionService {
   }
 
   /**
-   * Hash data without encryption (for one-way hashing like passwords)
+   * Hash data securely using scrypt (async)
+   * This provides a secure, slow hashing algorithm suitable for passwords
    */
-  public async hash(data: string, saltRounds: number = 12): Promise<string> {
-    // This is a simple implementation - in production, use bcrypt
-    const crypto = await import('crypto');
-    const salt = randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync(data, salt, 64).toString('hex');
-    return `${salt}:${hash}`;
+  public async hash(data: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const salt = randomBytes(16).toString('hex');
+      scrypt(data, salt, 64, (err: Error | null, derivedKey: Buffer) => {
+        if (err) return reject(err);
+        resolve(`${salt}:${derivedKey.toString('hex')}`);
+      });
+    });
   }
 
   /**
    * Verify hashed data
    */
   public async verifyHash(data: string, hashedData: string): Promise<boolean> {
-    const crypto = await import('crypto');
-    const [salt, hash] = hashedData.split(':');
-    const dataHash = crypto.scryptSync(data, salt, 64).toString('hex');
-    return hash === dataHash;
+    return new Promise((resolve, reject) => {
+      const [salt, key] = hashedData.split(':');
+      if (!salt || !key) {
+        return resolve(false);
+      }
+      scrypt(data, salt, 64, (err: Error | null, derivedKey: Buffer) => {
+        if (err) return reject(err);
+        resolve(key === derivedKey.toString('hex'));
+      });
+    });
   }
 
   /**
@@ -226,7 +282,7 @@ export class EncryptionService {
    */
   public createHMAC(data: string, key?: string): string {
     const hmacKey = key ? this.deriveKey(key) : this.key;
-    const hmac = crypto.createHmac('sha256', hmacKey);
+    const hmac = createHmac('sha256', hmacKey);
     hmac.update(data);
     return hmac.digest('hex');
   }
@@ -236,10 +292,14 @@ export class EncryptionService {
    */
   public verifyHMAC(data: string, hmac: string, key?: string): boolean {
     const calculatedHMAC = this.createHMAC(data, key);
-    return crypto.timingSafeEqual(
-      Buffer.from(calculatedHMAC, 'hex'),
-      Buffer.from(hmac, 'hex')
-    );
+    const calculatedBuffer = Buffer.from(calculatedHMAC, 'hex');
+    const providedBuffer = Buffer.from(hmac, 'hex');
+
+    if (calculatedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(calculatedBuffer, providedBuffer);
   }
 
   /**
@@ -254,11 +314,11 @@ export class EncryptionService {
    */
   public async encryptFile(buffer: Buffer, options: Partial<EncryptionOptions> = {}): Promise<Buffer> {
     const iv = randomBytes(this.ivLength);
-    const cipher = createCipherGCM(
+    const cipher = createCipheriv(
       options.algorithm || this.algorithm,
       options.key ? this.deriveKey(options.key) : this.key,
       iv
-    );
+    ) as unknown as crypto.CipherGCM;
 
     const encrypted = Buffer.concat([
       iv,
@@ -278,11 +338,11 @@ export class EncryptionService {
     const tag = encryptedBuffer.subarray(-16); // GCM tag is 16 bytes
     const data = encryptedBuffer.subarray(this.ivLength, -16);
 
-    const decipher = createDecipherGCM(
+    const decipher = createDecipheriv(
       options.algorithm || this.algorithm,
       options.key ? this.deriveKey(options.key) : this.key,
       iv
-    );
+    ) as unknown as crypto.DecipherGCM;
 
     decipher.setAuthTag(tag);
 

@@ -4,8 +4,8 @@
  * Tests for JWT authentication strategy
  */
 
-import { JWTStrategy } from '../../../src/auth/strategies/jwt';
-import { mockRequest, mockUser } from '../../utils/test-helpers';
+import { JWTStrategy } from '../../../../src/auth/strategies/jwt';
+import { mockRequest, mockUser } from '../../../utils/test-helpers';
 
 // Mock jsonwebtoken
 jest.mock('jsonwebtoken');
